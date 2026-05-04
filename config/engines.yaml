@@ -1,0 +1,20 @@
+engines:
+  lastfm_graph:
+    enabled: true
+    slot_weight: 0.25
+
+  content_similarity:
+    enabled: true
+    slot_weight: 0.20
+
+  genre_explorer:
+    enabled: true
+    slot_weight: 0.20
+
+  bandit_explorer:
+    enabled: true
+    slot_weight: 0.20
+
+  tidal_mix:
+    enabled: true
+    slot_weight: 0.15

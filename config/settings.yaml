@@ -1,0 +1,30 @@
+database_path: ./data/music.db
+
+tidal:
+  client_id: ""
+  client_secret: ""
+
+lastfm:
+  api_key: ""
+  api_secret: ""
+  username: ""
+
+spotify:
+  client_id: ""
+  client_secret: ""
+
+essentia:
+  models_dir: ./models/essentia/
+
+diversity:
+  recently_heard_days: 30
+  saturation_sessions: 3
+  saturation_min_avg_rating: 7.0
+  min_engines_represented: 3
+  oversampling_factor: 3
+
+playlists:
+  curated_threshold: 7
+  candidate_name: "Now Rating"
+  curated_master_name: "Liked — All"
+  curated_genre_prefix: "Liked — "

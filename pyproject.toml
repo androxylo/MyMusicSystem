@@ -1,0 +1,41 @@
+[project]
+name = "my-music-system"
+version = "0.1.0"
+description = "AI-powered personal music recommendation system"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "tidalapi>=0.8",
+    "spotipy>=2.23",
+    "pylast>=5.2",
+    "musicbrainzngs>=0.7",
+]
+
+[project.optional-dependencies]
+ml = [
+    "annoy>=1.17",
+    "lightfm>=1.17",
+    "scipy>=1.11",
+    "numpy>=1.24",
+]
+audio = [
+    "essentia",
+    "librosa>=0.10",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "pytest-timeout>=2.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+timeout = 30
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "connectors*", "engines*", "agent_tools*"]
