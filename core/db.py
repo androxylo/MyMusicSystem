@@ -368,6 +368,116 @@ class Database:
         rows = self.conn.execute("SELECT DISTINCT track_id FROM ratings").fetchall()
         return {row[0] for row in rows}
 
+    def get_tracks_with_audio_features(self, limit: int = 5000) -> list[Track]:
+        """Return tracks that have audio_features populated (for ANN search)."""
+        rows = self.conn.execute(
+            "SELECT * FROM tracks WHERE audio_features IS NOT NULL LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [self._row_to_track(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Playlist management (Phase 2)
+    # ------------------------------------------------------------------
+
+    def upsert_tidal_playlist(
+        self,
+        playlist_type: str,
+        name: str,
+        tidal_playlist_id: str,
+        tidal_playlist_url: str,
+        genre: str | None = None,
+    ) -> None:
+        from datetime import datetime
+        self.conn.execute(
+            """
+            INSERT INTO tidal_playlists
+                (playlist_type, genre, tidal_playlist_id, tidal_playlist_url, name, last_synced_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(tidal_playlist_id) DO UPDATE SET
+                name = excluded.name,
+                tidal_playlist_url = excluded.tidal_playlist_url,
+                last_synced_at = excluded.last_synced_at
+            """,
+            (playlist_type, genre, tidal_playlist_id, tidal_playlist_url, name, _fmt_dt(datetime.now())),
+        )
+        self.conn.commit()
+
+    def get_tidal_playlist(self, playlist_type: str, genre: str | None = None) -> dict | None:
+        if genre is not None:
+            row = self.conn.execute(
+                "SELECT * FROM tidal_playlists WHERE playlist_type = ? AND genre = ?",
+                (playlist_type, genre),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                "SELECT * FROM tidal_playlists WHERE playlist_type = ? AND genre IS NULL",
+                (playlist_type,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_all_tidal_playlists(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM tidal_playlists ORDER BY playlist_type, genre"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_playlist_track_count(self, tidal_playlist_id: str, track_count: int) -> None:
+        self.conn.execute(
+            "UPDATE tidal_playlists SET track_count = ? WHERE tidal_playlist_id = ?",
+            (track_count, tidal_playlist_id),
+        )
+        self.conn.commit()
+
+    def add_candidate_track(self, tidal_playlist_id: str, track_id: str, session_id: str) -> None:
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO candidate_playlist_tracks
+                (tidal_playlist_id, track_id, session_id)
+            VALUES (?, ?, ?)
+            """,
+            (tidal_playlist_id, track_id, session_id),
+        )
+        self.conn.commit()
+
+    def remove_candidate_track(self, tidal_playlist_id: str, track_id: str) -> None:
+        from datetime import datetime
+        self.conn.execute(
+            """
+            UPDATE candidate_playlist_tracks
+            SET removed_at = ?
+            WHERE tidal_playlist_id = ? AND track_id = ? AND removed_at IS NULL
+            """,
+            (_fmt_dt(datetime.now()), tidal_playlist_id, track_id),
+        )
+        self.conn.commit()
+
+    def get_unremoved_candidate_tracks(self, session_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            """
+            SELECT cpt.track_id, cpt.tidal_playlist_id, t.tidal_id
+            FROM candidate_playlist_tracks cpt
+            JOIN tracks t ON cpt.track_id = t.id
+            WHERE cpt.session_id = ? AND cpt.removed_at IS NULL
+            """,
+            (session_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def clear_candidate_tracks_for_session(self, session_id: str) -> int:
+        """Mark all candidate playlist tracks for a session as removed. Returns count."""
+        from datetime import datetime
+        cursor = self.conn.execute(
+            """
+            UPDATE candidate_playlist_tracks
+            SET removed_at = ?
+            WHERE session_id = ? AND removed_at IS NULL
+            """,
+            (_fmt_dt(datetime.now()), session_id),
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
     # ------------------------------------------------------------------
     # Stats helpers
     # ------------------------------------------------------------------

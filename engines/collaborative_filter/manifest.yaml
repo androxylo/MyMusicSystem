@@ -1,0 +1,12 @@
+name: collaborative_filter
+enabled: true
+description: "LightFM WARP model over genre-tag item features — learns latent preferences from the full rating history and ranks genres accordingly"
+
+capabilities:
+  novelty_bias: 0.3
+  genre_coverage: broad
+  cold_start_friendly: false
+  data_requirements:
+    - ratings
+    - genre_tags
+  speed: fast

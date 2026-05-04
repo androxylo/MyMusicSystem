@@ -1,0 +1,11 @@
+name: bandit_explorer
+enabled: true
+description: "Thompson Sampling over genre buckets — the primary anti-echo-chamber mechanism at the genre level"
+
+capabilities:
+  novelty_bias: 0.6
+  genre_coverage: broad
+  cold_start_friendly: true
+  data_requirements:
+    - ratings
+  speed: fast

@@ -1,0 +1,12 @@
+name: lastfm_graph
+enabled: true
+description: "Traverses the Last.fm artist similarity graph from liked artists (up to 2 hops)"
+
+capabilities:
+  novelty_bias: 0.4
+  genre_coverage: broad
+  cold_start_friendly: true
+  data_requirements:
+    - ratings
+    - lastfm_history
+  speed: fast

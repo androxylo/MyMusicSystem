@@ -1,0 +1,11 @@
+name: genre_explorer
+enabled: true
+description: "Identifies under-explored genre buckets and discovers tracks via Last.fm + Tidal"
+
+capabilities:
+  novelty_bias: 0.8
+  genre_coverage: broad
+  cold_start_friendly: true
+  data_requirements:
+    - ratings
+  speed: fast

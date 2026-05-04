@@ -1,0 +1,10 @@
+name: tidal_mix
+enabled: true
+description: "Returns tracks from the user's Tidal algorithmic mixes (My Daily Discovery, etc.)"
+
+capabilities:
+  novelty_bias: 0.3
+  genre_coverage: broad
+  cold_start_friendly: true
+  data_requirements: []
+  speed: fast

@@ -1,0 +1,12 @@
+name: content_similarity
+enabled: true
+description: "ANN search over Essentia audio features — suggests tracks that sound like what you already liked"
+
+capabilities:
+  novelty_bias: 0.2
+  genre_coverage: narrow
+  cold_start_friendly: false
+  data_requirements:
+    - ratings
+    - audio_features
+  speed: fast
