@@ -170,7 +170,7 @@ def _init_system() -> _SystemContext:
 
 
 def _build_tidal(cfg: dict):
-    if not cfg.get("client_id"):
+    if not (cfg.get("client_id") or cfg.get("token_path")):
         return None
     try:
         from connectors.tidal import TidalConnector

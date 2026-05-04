@@ -29,7 +29,7 @@ def _load_tidal_config() -> dict | None:
         with _SETTINGS_PATH.open() as f:
             data = yaml.safe_load(f) or {}
         cfg = data.get("tidal", {})
-        if not cfg.get("client_id"):
+        if not (cfg.get("client_id") or cfg.get("token_path")):
             return None
         return cfg
     except Exception:
@@ -63,7 +63,9 @@ class TidalMixEngine(BaseEngine):
             return None
         try:
             from connectors.tidal import TidalConnector
-            return TidalConnector(cfg)
+            conn = TidalConnector(cfg)
+            conn.authenticate()
+            return conn
         except Exception:
             logger.debug("TidalMixEngine: could not build TidalConnector", exc_info=True)
             return None

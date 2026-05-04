@@ -181,6 +181,29 @@ class LastFmConnector:
             raise ConnectorError(f"Last.fm get_artist_top_tracks({artist_name!r}) failed: {exc}") from exc
 
     # ------------------------------------------------------------------
+    # Per-track tags
+    # ------------------------------------------------------------------
+
+    def get_track_tags(self, title: str, artist: str, limit: int = 15) -> list[tuple[str, float]]:
+        """
+        Return top tags for a specific track as (tag_name, weight) pairs.
+        Weight is normalized to [0, 1] from Last.fm's 0-100 scale.
+        Tags are lowercased.
+        """
+        try:
+            track = self._net.get_track(artist, title)
+            tags = track.get_top_tags(limit=limit)
+            return [
+                (t.item.name.lower(), min(1.0, int(t.weight) / 100.0))
+                for t in tags
+                if t.weight
+            ]
+        except ConnectorError:
+            raise
+        except Exception as exc:
+            raise ConnectorError(f"Last.fm get_track_tags({artist!r}, {title!r}) failed: {exc}") from exc
+
+    # ------------------------------------------------------------------
     # User history
     # ------------------------------------------------------------------
 

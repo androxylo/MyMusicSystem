@@ -87,11 +87,13 @@ class GenreExplorerEngine(BaseEngine):
 
     def _try_build_tidal(self):
         cfg = _load_settings().get("tidal", {})
-        if not cfg.get("client_id"):
+        if not (cfg.get("client_id") or cfg.get("token_path")):
             return None
         try:
             from connectors.tidal import TidalConnector
-            return TidalConnector(cfg)
+            conn = TidalConnector(cfg)
+            conn.authenticate()
+            return conn
         except Exception:
             logger.debug("GenreExplorerEngine: could not build TidalConnector", exc_info=True)
             return None

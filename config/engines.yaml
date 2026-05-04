@@ -18,3 +18,7 @@ engines:
   tidal_mix:
     enabled: true
     slot_weight: 0.15
+
+  lastfm_tag_similarity:
+    enabled: true
+    slot_weight: 0.20

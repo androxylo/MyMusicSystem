@@ -1,0 +1,10 @@
+name: lastfm_tag_similarity
+enabled: true
+description: "Cosine similarity over per-track Last.fm crowd-sourced tags (ambient, melancholic, etc.)"
+capabilities:
+  novelty_bias: 0.3
+  genre_coverage: broad
+  cold_start_friendly: false
+  data_requirements:
+    - ratings
+  speed: slow

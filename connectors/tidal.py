@@ -91,10 +91,12 @@ class TidalConnector:
             raise ConnectorError("tidalapi is not installed — run: pip install tidalapi")
 
         try:
-            config = tidalapi.Config(
-                client_id=self._config.get("client_id", ""),
-                client_secret=self._config.get("client_secret", ""),
-            )
+            client_id = self._config.get("client_id", "")
+            client_secret = self._config.get("client_secret", "")
+            if client_id and client_secret:
+                config = tidalapi.Config(client_id=client_id, client_secret=client_secret)
+            else:
+                config = tidalapi.Config()   # use tidalapi's built-in default credentials
             self._session = tidalapi.Session(config)
 
             token_path = self._config.get("token_path")
@@ -170,7 +172,8 @@ class TidalConnector:
     def search_tracks(self, query: str, limit: int = 10) -> list[TidalTrack]:
         """Search Tidal for tracks matching the query string."""
         try:
-            results = self._s.search(query, models=[self._s.track.__class__], limit=limit)
+            import tidalapi
+            results = self._s.search(query, models=[tidalapi.Track], limit=limit)
             tracks_raw = results.get("tracks", []) if isinstance(results, dict) else getattr(results, "tracks", [])
             return [self._to_tidal_track(t) for t in (tracks_raw or [])]
         except ConnectorError:
@@ -209,8 +212,12 @@ class TidalConnector:
     def get_user_mixes(self) -> list[dict]:
         """Return the user's available mixes with id and title."""
         try:
-            mixes = self._s.get_mixes()
-            return [{"id": str(m.id), "title": m.title} for m in mixes]
+            page = self._s.mixes()
+            mixes = []
+            for category in page.categories:
+                for item in getattr(category, "items", []):
+                    mixes.append({"id": str(item.id), "title": item.title})
+            return mixes
         except ConnectorError:
             raise
         except Exception as exc:
