@@ -8,6 +8,7 @@ never blocks a rating.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,6 +29,17 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+_NORM_RE = re.compile(r"[^\w\s]")
+_WS_RE = re.compile(r"\s+")
+
+
+def _track_fingerprint(title: str, artist: str) -> str:
+    """Normalized 'title|artist' key for cross-session deduplication."""
+    def norm(s: str) -> str:
+        s = _NORM_RE.sub("", s.lower())
+        return _WS_RE.sub(" ", s).strip()
+    return f"{norm(title)}|{norm(artist)}"
 
 
 # ---------------------------------------------------------------------------
@@ -287,11 +299,16 @@ class SessionManager:
         all_rated = self._db.get_all_rated_tracks()
         recent_sessions = self._db.get_recent_sessions(n=10)
         excluded = self._db.get_all_rated_track_ids()
+        fingerprints = {
+            _track_fingerprint(rt.track.title, rt.track.artist)
+            for rt in all_rated
+        }
         return SessionContext(
             rated_tracks=all_rated,
             recent_sessions=recent_sessions,
             session_config=config,
             excluded_track_ids=excluded,
+            excluded_track_fingerprints=fingerprints,
         )
 
     def _record_engine_performance(

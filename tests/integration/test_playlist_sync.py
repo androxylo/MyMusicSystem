@@ -89,9 +89,18 @@ def _make_tidal_mock() -> MagicMock:
 
 
 def _make_suggestions(genres: list[str] | None = None) -> list[Suggestion]:
+    # batch_id makes titles unique across calls so fingerprint dedup doesn't
+    # collapse two separate sessions' suggestion sets into one.
+    batch_id = uuid.uuid4().hex[:6]
     return [
         make_suggestion(
-            make_track(genre_primary=g, track_id=str(uuid.uuid4()), tidal_id=str(uuid.uuid4())),
+            make_track(
+                title=f"{g} Track {batch_id}",
+                artist=f"{g} Artist",
+                genre_primary=g,
+                track_id=str(uuid.uuid4()),
+                tidal_id=str(uuid.uuid4()),
+            ),
             engine_name="mock_engine",
             engine_score=0.9 - i * 0.05,
         )

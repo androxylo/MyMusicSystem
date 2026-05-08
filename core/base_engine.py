@@ -67,6 +67,9 @@ class SessionContext:
     recent_sessions: list[Session]
     session_config: SessionConfig
     excluded_track_ids: set[str] = field(default_factory=set)
+    # Normalized "title|artist" fingerprints for all previously-rated tracks.
+    # Catches the same song reappearing on a different album (different tidal_id).
+    excluded_track_fingerprints: set[str] = field(default_factory=set)
 
 
 @dataclass

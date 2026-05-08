@@ -274,6 +274,10 @@ class DiversityEnforcer:
 
         saturated = set()
         for genre, ratings in genre_session_data.items():
+            if genre == "Other":
+                # "Other" is a catch-all for unclassified tracks — it has no
+                # coherent meaning as a genre, so saturation tracking is useless.
+                continue
             if (
                 len(ratings) >= self._saturation_sessions
                 and sum(ratings) / len(ratings) >= self._saturation_min_avg_rating
@@ -287,6 +291,9 @@ class DiversityEnforcer:
         Greedy selection: iterate pool (ordered by engine_score desc) and pick
         at most one track per genre_primary bucket.
 
+        "Other" tracks each get a unique per-track diversity key so they never
+        block each other — they can all pass through independently.
+
         Falls back to allowing repeats if fewer than n unique buckets exist.
         """
         # Sort descending by engine_score so the best candidates are picked first
@@ -296,15 +303,16 @@ class DiversityEnforcer:
         used_genres: set[str] = set()
         leftover: list[Suggestion] = []
 
-        # First pass: one per genre
+        # First pass: one per genre (each "Other" track is its own bucket)
         seen_track_ids: set[str] = set()
         for suggestion in sorted_pool:
             if suggestion.track.id in seen_track_ids:
                 continue
             genre = suggestion.track.genre_primary
-            if genre not in used_genres:
+            diversity_key = f"Other_{suggestion.track.id}" if genre == "Other" else genre
+            if diversity_key not in used_genres:
                 selected.append(suggestion)
-                used_genres.add(genre)
+                used_genres.add(diversity_key)
                 seen_track_ids.add(suggestion.track.id)
                 if len(selected) >= n:
                     return selected

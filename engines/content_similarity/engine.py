@@ -6,19 +6,19 @@ Workflow per session:
   2. Filter out already-rated and excluded tracks.
   3. Build a weighted preference vector from liked tracks in rating history
      (score >= LIKED_THRESHOLD) that have audio_features.
-  4. Build an Annoy index over the filtered corpus.
-  5. Query the index for n nearest neighbours by angular distance.
+  4. Build a pynndescent NNDescent index over the filtered corpus.
+  5. Query the index for n nearest neighbours by cosine distance.
   6. Return as Suggestion objects.
 
 Cold-start behaviour (no liked tracks with audio features):
   Returns random tracks from the corpus rather than failing the session.
 
 The engine requires:
-  - annoy package installed (pip install annoy)
+  - pynndescent package installed (pip install pynndescent)
   - Tracks in the DB with audio_features populated by EssentiaExtractor
 
 health_check returns:
-  - "unavailable"  if annoy is not importable
+  - "unavailable"  if pynndescent is not importable
   - "unavailable"  if DB is not configured
   - "degraded"     if corpus has < MIN_CORPUS_SIZE tracks with audio_features
   - "ok"           otherwise
@@ -45,19 +45,22 @@ _LIKED_THRESHOLD = 7
 # Warn (degraded) when corpus is smaller than this
 _MIN_CORPUS_SIZE = 20
 
-# Number of trees in the Annoy index (more = better recall, slower build)
-_N_TREES = 10
-
 # Feature vector dimensionality (must match EssentiaExtractor.FEATURE_DIM)
 _FEATURE_DIM = 8
 
+# pynndescent: number of neighbours used when building the index graph.
+# Higher = better recall, slower build. 30 is a good default for small corpora.
+_N_NEIGHBORS = 30
+
 # Detected once at import time so health_check is fast
 try:
-    from annoy import AnnoyIndex as _AnnoyIndex  # type: ignore[import]
-    _ANNOY_AVAILABLE = True
+    from pynndescent import NNDescent as _NNDescent  # type: ignore[import]
+    import numpy as _np
+    _PYNNDESCENT_AVAILABLE = True
 except ImportError:
-    _AnnoyIndex = None  # type: ignore[assignment,misc]
-    _ANNOY_AVAILABLE = False
+    _NNDescent = None  # type: ignore[assignment,misc]
+    _np = None  # type: ignore[assignment]
+    _PYNNDESCENT_AVAILABLE = False
 
 
 def _load_settings() -> dict:
@@ -78,7 +81,7 @@ class ContentSimilarityEngine(BaseEngine):
     """
     Suggests tracks that sound like the user's liked tracks.
 
-    Requires annoy (pip install annoy) and audio_features in the DB.
+    Requires pynndescent (pip install pynndescent) and audio_features in the DB.
     """
 
     def __init__(self, db=None, seed: int | None = None) -> None:
@@ -114,10 +117,10 @@ class ContentSimilarityEngine(BaseEngine):
     # ------------------------------------------------------------------
 
     def health_check(self) -> EngineHealth:
-        if not _ANNOY_AVAILABLE:
+        if not _PYNNDESCENT_AVAILABLE:
             return EngineHealth(
                 status="unavailable",
-                message="annoy package not installed — run: pip install annoy",
+                message="pynndescent package not installed — run: pip install pynndescent",
             )
         if self._db is None:
             return EngineHealth(
@@ -138,7 +141,7 @@ class ContentSimilarityEngine(BaseEngine):
         return EngineHealth(status="ok")
 
     def suggest(self, n: int, context: SessionContext) -> list[Suggestion]:
-        if not _ANNOY_AVAILABLE or self._db is None:
+        if not _PYNNDESCENT_AVAILABLE or self._db is None:
             return []
         try:
             return self._run(n, context)
@@ -209,33 +212,40 @@ class ContentSimilarityEngine(BaseEngine):
     def _ann_search(
         self, corpus: list[Track], pref_vector: list[float], n: int
     ) -> list[Suggestion]:
-        """Build Annoy index and query for nearest neighbours."""
-        idx = _AnnoyIndex(_FEATURE_DIM, "angular")
+        """Build pynndescent index and query for nearest neighbours."""
         valid_corpus: list[Track] = []
+        vectors: list[list[float]] = []
 
         for track in corpus:
             features = (track.audio_features or {}).get("features", [])
             if len(features) < _FEATURE_DIM:
                 continue
-            idx.add_item(len(valid_corpus), features[:_FEATURE_DIM])
+            vectors.append(features[:_FEATURE_DIM])
             valid_corpus.append(track)
 
         if not valid_corpus:
             return []
 
-        idx.build(_N_TREES)
+        data = _np.array(vectors, dtype=_np.float32)
+        query = _np.array([pref_vector], dtype=_np.float32)
+
+        # pynndescent requires n_neighbors < n_samples
+        n_neighbors = min(_N_NEIGHBORS, len(valid_corpus) - 1)
+        if n_neighbors < 1:
+            return []
 
         n_query = min(n * 3, len(valid_corpus))
-        nns, distances = idx.get_nns_by_vector(
-            pref_vector, n_query, include_distances=True
-        )
+
+        index = _NNDescent(data, metric="cosine", n_neighbors=n_neighbors, random_state=42)
+        index.prepare()
+        indices, distances = index.query(query, k=n_query)
 
         results: list[Suggestion] = []
-        for i, dist in zip(nns, distances):
+        for i, dist in zip(indices[0], distances[0]):
             if len(results) >= n:
                 break
             track = valid_corpus[i]
-            # Angular distance ∈ [0, 2] → similarity ∈ [0, 1]
+            # Cosine distance ∈ [0, 2] → similarity ∈ [0, 1]
             similarity = max(0.0, 1.0 - dist / 2.0)
             results.append(
                 self._make_suggestion(

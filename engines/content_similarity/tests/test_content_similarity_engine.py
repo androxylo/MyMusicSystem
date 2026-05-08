@@ -1,10 +1,9 @@
 """
 Unit tests for ContentSimilarityEngine.
-External dependencies (annoy, DB) are mocked — no real index built.
+External dependencies (pynndescent, DB) are mocked — no real index built.
 """
 from __future__ import annotations
 
-import sys
 import uuid
 from datetime import datetime
 from unittest.mock import MagicMock, patch
@@ -71,6 +70,7 @@ def _context(rated=None, excluded=None) -> SessionContext:
         recent_sessions=[],
         session_config=SessionConfig(),
         excluded_track_ids=excluded or set(),
+        excluded_track_fingerprints=set(),
     )
 
 
@@ -88,17 +88,27 @@ def _make_engine(db=None, seed: int = 42) -> ContentSimilarityEngine:
     return engine
 
 
-def _make_annoy_mock(
+def _make_nndescent_mock(
     corpus_size: int = 5,
     distances: list[float] | None = None,
 ) -> MagicMock:
-    """Return a mock AnnoyIndex class that simulates get_nns_by_vector."""
+    """
+    Return a mock NNDescent class that simulates pynndescent's query() API.
+
+    pynndescent returns (indices, distances) as 2-D arrays where
+    indices[0] and distances[0] are the results for the first query vector.
+    """
+    import numpy as np
+
     if distances is None:
         distances = [0.1 * i for i in range(corpus_size)]
-    nns = list(range(min(corpus_size, len(distances))))
+    n = min(corpus_size, len(distances))
+    idx_arr = np.array([list(range(n))], dtype=np.int32)
+    dist_arr = np.array([distances[:n]], dtype=np.float32)
 
     mock_idx = MagicMock()
-    mock_idx.get_nns_by_vector.return_value = (nns, distances[:len(nns)])
+    mock_idx.prepare.return_value = None
+    mock_idx.query.return_value = (idx_arr, dist_arr)
 
     mock_cls = MagicMock(return_value=mock_idx)
     return mock_cls
@@ -109,20 +119,20 @@ def _make_annoy_mock(
 # ---------------------------------------------------------------------------
 
 class TestHealthCheck:
-    def test_unavailable_when_annoy_missing(self):
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", False):
+    def test_unavailable_when_pynndescent_missing(self):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", False):
             engine = _make_engine()
             assert engine.health_check().status == "unavailable"
 
     def test_unavailable_when_db_none(self):
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = ContentSimilarityEngine(db=None)
             engine._db = None
             assert engine.health_check().status == "unavailable"
 
     def test_degraded_when_corpus_too_small(self):
         db = _make_db_mock(tracks=[_make_track(seed=i) for i in range(5)])
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = _make_engine(db=db)
             health = engine.health_check()
         assert health.status == "degraded"
@@ -131,14 +141,14 @@ class TestHealthCheck:
     def test_ok_when_corpus_large_enough(self):
         tracks = [_make_track(seed=i) for i in range(_MIN_CORPUS_SIZE + 1)]
         db = _make_db_mock(tracks=tracks)
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = _make_engine(db=db)
             assert engine.health_check().status == "ok"
 
     def test_unavailable_when_db_query_raises(self):
         db = _make_db_mock()
         db.get_tracks_with_audio_features.side_effect = Exception("DB down")
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = _make_engine(db=db)
             assert engine.health_check().status == "unavailable"
 
@@ -209,22 +219,20 @@ class TestPreferenceVector:
 # ---------------------------------------------------------------------------
 
 class TestSuggest:
-    def test_returns_empty_when_annoy_unavailable(self):
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", False):
+    def test_returns_empty_when_pynndescent_unavailable(self):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", False):
             engine = _make_engine()
             assert engine.suggest(5, _context()) == []
 
     def test_returns_empty_when_db_none(self):
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = ContentSimilarityEngine(db=None)
             engine._db = None
             assert engine.suggest(5, _context()) == []
 
     def test_returns_empty_when_corpus_is_empty(self):
         db = _make_db_mock(tracks=[])
-        mock_cls = _make_annoy_mock(corpus_size=0)
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True), \
-             patch.object(engine_module, "_AnnoyIndex", mock_cls):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = _make_engine(db=db)
             assert engine.suggest(5, _context()) == []
 
@@ -232,7 +240,7 @@ class TestSuggest:
         """No liked tracks → random shuffle from corpus."""
         tracks = [_make_track(seed=i) for i in range(5)]
         db = _make_db_mock(tracks=tracks)
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = _make_engine(db=db)
             results = engine.suggest(3, _context(rated=[]))
         assert len(results) == 3
@@ -240,9 +248,9 @@ class TestSuggest:
     def test_results_within_n(self):
         tracks = [_make_track(seed=i) for i in range(10)]
         db = _make_db_mock(tracks=tracks)
-        mock_cls = _make_annoy_mock(corpus_size=10)
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True), \
-             patch.object(engine_module, "_AnnoyIndex", mock_cls):
+        mock_cls = _make_nndescent_mock(corpus_size=10)
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True), \
+             patch.object(engine_module, "_NNDescent", mock_cls):
             engine = _make_engine(db=db)
             liked = _make_track(seed=99); liked.audio_features = {"features": _make_features(99)}
             rated = [_make_rated(liked, score=9)]
@@ -252,9 +260,9 @@ class TestSuggest:
     def test_suggestion_fields_populated(self):
         tracks = [_make_track(seed=i) for i in range(5)]
         db = _make_db_mock(tracks=tracks)
-        mock_cls = _make_annoy_mock(corpus_size=5)
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True), \
-             patch.object(engine_module, "_AnnoyIndex", mock_cls):
+        mock_cls = _make_nndescent_mock(corpus_size=5)
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True), \
+             patch.object(engine_module, "_NNDescent", mock_cls):
             engine = _make_engine(db=db)
             liked = _make_track(seed=99); liked.audio_features = {"features": _make_features(99)}
             results = engine.suggest(3, _context(rated=[_make_rated(liked, score=9)]))
@@ -269,9 +277,9 @@ class TestSuggest:
         tracks = [_make_track(seed=i) for i in range(10)]
         excluded_ids = {tracks[0].id, tracks[1].id}
         db = _make_db_mock(tracks=tracks)
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = _make_engine(db=db)
-            # Cold start so we can test exclusion without annoy
+            # Cold start so we can test exclusion without pynndescent
             results = engine.suggest(5, _context(excluded=excluded_ids))
         result_ids = {s.track.id for s in results}
         assert not result_ids.intersection(excluded_ids)
@@ -281,7 +289,7 @@ class TestSuggest:
         rated_track = tracks[0]
         rated = [_make_rated(rated_track, score=3)]
         db = _make_db_mock(tracks=tracks)
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = _make_engine(db=db)
             results = engine.suggest(5, _context(rated=rated))
         result_ids = {s.track.id for s in results}
@@ -290,7 +298,7 @@ class TestSuggest:
     def test_does_not_raise_when_db_fails(self):
         db = _make_db_mock()
         db.get_tracks_with_audio_features.side_effect = Exception("DB exploded")
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True):
             engine = _make_engine(db=db)
             result = engine.suggest(5, _context())
         assert isinstance(result, list)
@@ -300,10 +308,10 @@ class TestSuggest:
         db = _make_db_mock(tracks=tracks)
         # Distances from 0.0 (identical) to 2.0 (opposite)
         distances = [0.0, 0.5, 1.0, 1.5, 2.0]
-        mock_cls = _make_annoy_mock(corpus_size=5, distances=distances)
+        mock_cls = _make_nndescent_mock(corpus_size=5, distances=distances)
         liked = _make_track(seed=99); liked.audio_features = {"features": _make_features(99)}
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True), \
-             patch.object(engine_module, "_AnnoyIndex", mock_cls):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True), \
+             patch.object(engine_module, "_NNDescent", mock_cls):
             engine = _make_engine(db=db)
             results = engine.suggest(5, _context(rated=[_make_rated(liked, score=9)]))
         for s in results:
@@ -317,11 +325,11 @@ class TestSuggest:
         """Track at distance 0.1 should score higher than track at distance 1.8."""
         tracks = [_make_track(seed=i) for i in range(2)]
         db = _make_db_mock(tracks=tracks)
-        # nns = [0, 1], distances = [0.1, 1.8]
-        mock_cls = _make_annoy_mock(corpus_size=2, distances=[0.1, 1.8])
+        # indices=[0,1], distances=[0.1, 1.8]
+        mock_cls = _make_nndescent_mock(corpus_size=2, distances=[0.1, 1.8])
         liked = _make_track(seed=99); liked.audio_features = {"features": _make_features(99)}
-        with patch.object(engine_module, "_ANNOY_AVAILABLE", True), \
-             patch.object(engine_module, "_AnnoyIndex", mock_cls):
+        with patch.object(engine_module, "_PYNNDESCENT_AVAILABLE", True), \
+             patch.object(engine_module, "_NNDescent", mock_cls):
             engine = _make_engine(db=db)
             results = engine.suggest(2, _context(rated=[_make_rated(liked, score=9)]))
         assert len(results) == 2

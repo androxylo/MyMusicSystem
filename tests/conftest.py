@@ -187,4 +187,5 @@ def session_context():
         recent_sessions=[],
         session_config=SessionConfig(),
         excluded_track_ids=set(),
+        excluded_track_fingerprints=set(),
     )

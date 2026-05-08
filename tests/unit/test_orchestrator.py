@@ -131,3 +131,76 @@ class TestSuggestionCollection:
         orc.get_suggestions(self._ctx())
         assert ea.suggest.called
         assert eb.suggest.called
+
+
+class TestPoolFilter:
+    def _ctx(self, fingerprints: set[str] | None = None) -> SessionContext:
+        return SessionContext(
+            rated_tracks=[],
+            recent_sessions=[],
+            session_config=SessionConfig(),
+            excluded_track_ids=set(),
+            excluded_track_fingerprints=fingerprints or set(),
+        )
+
+    def test_karaoke_title_dropped(self):
+        junk = make_suggestion(make_track(title="My Song [Karaoke Version]", genre_primary="Rock", track_id=str(uuid.uuid4())), "eng")
+        clean = make_suggestion(make_track(title="My Song", genre_primary="Jazz", track_id=str(uuid.uuid4())), "eng")
+        engine = make_mock_engine("eng", [junk, clean])
+        orc = make_orchestrator([engine], {"eng": 1.0}, n_final=5)
+        result = orc.get_suggestions(self._ctx())
+        titles = [s.track.title for s in result]
+        assert "My Song [Karaoke Version]" not in titles
+        assert "My Song" in titles
+
+    def test_in_the_style_of_dropped(self):
+        junk = make_suggestion(make_track(title="Song in the Style of Elvis", genre_primary="Rock", track_id=str(uuid.uuid4())), "eng")
+        engine = make_mock_engine("eng", [junk])
+        orc = make_orchestrator([engine], {"eng": 1.0}, n_final=5)
+        result = orc.get_suggestions(self._ctx())
+        assert result == []
+
+    def test_tribute_to_dropped(self):
+        junk = make_suggestion(make_track(title="Tribute to Freddie King", genre_primary="Blues", track_id=str(uuid.uuid4())), "eng")
+        engine = make_mock_engine("eng", [junk])
+        orc = make_orchestrator([engine], {"eng": 1.0}, n_final=5)
+        result = orc.get_suggestions(self._ctx())
+        assert result == []
+
+    def test_fingerprint_dedup_drops_same_title_artist(self):
+        # Simulate a track rated in a prior session under a different tidal_id
+        import re
+        norm = lambda s: re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", s.lower())).strip()
+        fp = f"{norm('Going Down')}|{norm('Freddie King')}"
+
+        same_song_new_album = make_suggestion(
+            make_track(title="Going Down", artist="Freddie King", genre_primary="Blues", track_id=str(uuid.uuid4())),
+            "eng",
+        )
+        engine = make_mock_engine("eng", [same_song_new_album])
+        orc = make_orchestrator([engine], {"eng": 1.0}, n_final=5)
+        result = orc.get_suggestions(self._ctx(fingerprints={fp}))
+        assert result == []
+
+    def test_fingerprint_dedup_normalizes_punctuation(self):
+        norm = lambda s: __import__("re").sub(r"\s+", " ", __import__("re").sub(r"[^\w\s]", "", s.lower())).strip()
+        fp = f"{norm('Gymnopédie No. 1')}|{norm('Erik Satie')}"
+        # Same track, punctuation stripped differently in title
+        track = make_suggestion(
+            make_track(title="Gymnopédie No 1", artist="Erik Satie", genre_primary="Classical", track_id=str(uuid.uuid4())),
+            "eng",
+        )
+        engine = make_mock_engine("eng", [track])
+        orc = make_orchestrator([engine], {"eng": 1.0}, n_final=5)
+        result = orc.get_suggestions(self._ctx(fingerprints={fp}))
+        assert result == []
+
+    def test_clean_tracks_pass_through(self):
+        tracks = [
+            make_suggestion(make_track(title="Going Down", artist="Freddie King", genre_primary="Blues", track_id=str(uuid.uuid4())), "eng"),
+            make_suggestion(make_track(title="Clair de Lune", artist="Debussy", genre_primary="Classical", track_id=str(uuid.uuid4())), "eng"),
+        ]
+        engine = make_mock_engine("eng", tracks)
+        orc = make_orchestrator([engine], {"eng": 1.0}, n_final=5)
+        result = orc.get_suggestions(self._ctx())
+        assert len(result) == 2

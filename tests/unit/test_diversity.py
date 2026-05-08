@@ -164,6 +164,45 @@ class TestDiversityEnforcerSelect:
         result = self.enforcer.select(pool, 3, [], [], [])
         assert len(result) <= 3
 
+    def test_multiple_other_tracks_all_pass_through(self):
+        """'Other' tracks must not block each other — each gets its own diversity slot."""
+        pool = [
+            make_suggestion(make_track(genre_primary="Other", track_id=str(uuid.uuid4())), "eng", 0.9),
+            make_suggestion(make_track(genre_primary="Other", track_id=str(uuid.uuid4())), "eng", 0.8),
+            make_suggestion(make_track(genre_primary="Other", track_id=str(uuid.uuid4())), "eng", 0.7),
+        ]
+        result = self.enforcer.select(pool, 5, [], [], [])
+        assert len(result) == 3  # all three pass through
+
+    def test_other_never_saturated(self):
+        """'Other' must never appear in the saturated set regardless of ratings."""
+        enforcer = DiversityEnforcer(
+            recently_heard_days=30,
+            saturation_sessions=1,
+            saturation_min_avg_rating=5.0,
+            min_engines_represented=1,
+        )
+        session_id = str(uuid.uuid4())
+        sessions = [
+            Session(
+                id=session_id,
+                started_at=datetime.now(),
+                engine_allocation={},
+                diversity_config={},
+                completed_at=datetime.now(),
+            )
+        ]
+        genre_history = [
+            {"genre": "Other", "session_id": session_id, "avg_rating": 10.0}
+        ]
+        pool = [
+            make_suggestion(make_track(genre_primary="Other", track_id=str(uuid.uuid4())), "eng", 0.9),
+            make_suggestion(make_track(genre_primary="Other", track_id=str(uuid.uuid4())), "eng", 0.8),
+        ]
+        result = enforcer.select(pool, 5, [], sessions, genre_history)
+        # Both tracks should appear — "Other" saturation must not suppress them
+        assert len(result) == 2
+
     def test_engine_representation_best_effort(self):
         """At least min_engines_represented engines should appear when possible."""
         genres_a = ["Electronic", "Rock", "Jazz", "Pop"]

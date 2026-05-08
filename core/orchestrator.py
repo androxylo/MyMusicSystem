@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 
 from core.base_engine import BaseEngine, SessionContext, Suggestion
 from core.diversity import DiversityEnforcer
@@ -17,6 +18,27 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_OVERSAMPLING = 3
 _DEFAULT_N_FINAL = 10
+
+# Patterns that indicate a track is a karaoke, cover, or tribute version.
+_JUNK_RE = re.compile(
+    r"\bkaraoke\b"
+    r"|in the style of\b"
+    r"|\btribute to\b"
+    r"|made famous by\b"
+    r"|originally performed by\b"
+    r"|as made famous\b",
+    re.IGNORECASE,
+)
+
+_NORM_RE = re.compile(r"[^\w\s]")
+_WS_RE = re.compile(r"\s+")
+
+
+def _fingerprint(title: str, artist: str) -> str:
+    def norm(s: str) -> str:
+        s = _NORM_RE.sub("", s.lower())
+        return _WS_RE.sub(" ", s).strip()
+    return f"{norm(title)}|{norm(artist)}"
 
 
 class Orchestrator:
@@ -59,6 +81,7 @@ class Orchestrator:
 
         allocation = self._allocate_slots()
         pool = self._collect_suggestions(allocation, context)
+        pool = self._filter_pool(pool, context)
 
         logger.info(
             f"Pool size after collection: {len(pool)} candidates from "
@@ -142,6 +165,42 @@ class Orchestrator:
             pool.extend(suggestions)
 
         return pool
+
+    @staticmethod
+    def _filter_pool(pool: list[Suggestion], context: SessionContext) -> list[Suggestion]:
+        """
+        Remove low-quality and already-heard candidates before diversity selection.
+
+        Two gates (applied in order):
+        1. Junk filter — drops karaoke, tribute, and cover tracks by scanning the title.
+        2. Fingerprint dedup — drops tracks whose normalized (title, artist) pair
+           matches a previously-rated track, even when the tidal_id differs
+           (same song on a different album).
+        """
+        filtered: list[Suggestion] = []
+        fingerprints = context.excluded_track_fingerprints
+
+        for s in pool:
+            title = s.track.title
+
+            # Gate 1: junk titles
+            if _JUNK_RE.search(title):
+                logger.debug(f"Junk filter dropped: {title!r} ({s.engine_name})")
+                continue
+
+            # Gate 2: same song rated before under a different tidal_id
+            fp = _fingerprint(title, s.track.artist)
+            if fp in fingerprints:
+                logger.debug(f"Fingerprint dedup dropped: {title!r} by {s.track.artist!r}")
+                continue
+
+            filtered.append(s)
+
+        dropped = len(pool) - len(filtered)
+        if dropped:
+            logger.info(f"Pool filter: dropped {dropped} track(s) ({len(filtered)} remain)")
+
+        return filtered
 
     @staticmethod
     def _genre_session_history(context: SessionContext) -> list[dict]:
