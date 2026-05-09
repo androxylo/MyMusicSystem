@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "music": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--python", "3.11",
+        "--no-project",
+        "--with", "mcp",
+        "--with", "pyyaml",
+        "--with", "tidalapi",
+        "--with", "pylast",
+        "--with", "musicbrainzngs",
+        "mcp_server.py"
+      ],
+      "cwd": "/Users/ashuvalov7/MyMusicSystem"
+    }
+  }
+}

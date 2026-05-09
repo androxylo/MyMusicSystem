@@ -9,6 +9,7 @@ dependencies = [
     "spotipy>=2.23",
     "pylast>=5.2",
     "musicbrainzngs>=0.7",
+    "mcp>=1.0",
 ]
 
 [project.optional-dependencies]

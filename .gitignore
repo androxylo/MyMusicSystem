@@ -16,3 +16,4 @@ models/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+config/settings.yaml
