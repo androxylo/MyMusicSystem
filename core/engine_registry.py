@@ -90,7 +90,7 @@ class EngineRegistry:
 
     Usage:
         registry = EngineRegistry(engines_dir, engines_config)
-        registry.load()
+        registry.load(tidal=connector, lastfm=connector)
         engines = registry.engines  # list[BaseEngine]
     """
 
@@ -104,8 +104,11 @@ class EngineRegistry:
         self._engines: list[BaseEngine] = []
         self._health: dict[str, EngineHealth] = {}
 
-    def load(self) -> None:
-        """Discover, instantiate, and health-check all engines. Populates self.engines."""
+    def load(self, tidal=None, lastfm=None) -> None:
+        """Discover, instantiate, and health-check all engines. Populates self.engines.
+
+        Pass shared connector instances so engines don't each build their own.
+        """
         self._engines = []
         self._health = {}
 
@@ -140,9 +143,16 @@ class EngineRegistry:
             if engine_cls is None:
                 continue
 
-            # Instantiate and inject metadata
+            # Instantiate with shared connectors where the engine accepts them
             try:
-                engine = engine_cls()
+                import inspect
+                sig = inspect.signature(engine_cls.__init__)
+                kwargs = {}
+                if "tidal" in sig.parameters and tidal is not None:
+                    kwargs["tidal"] = tidal
+                if "lastfm" in sig.parameters and lastfm is not None:
+                    kwargs["lastfm"] = lastfm
+                engine = engine_cls(**kwargs)
             except Exception:
                 logger.exception(f"Error instantiating engine {name!r}")
                 continue

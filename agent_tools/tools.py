@@ -107,7 +107,7 @@ def _init_system() -> _SystemContext:
     # Engine registry (engines self-initialize from settings.yaml)
     from core.engine_registry import EngineRegistry
     registry = EngineRegistry(_ENGINES_DIR, engines_cfg)
-    registry.load()
+    registry.load(tidal=tidal_connector, lastfm=lastfm_connector)
     engines = registry.engines
     if not engines:
         logger.warning("No engines loaded — sessions will produce no suggestions")
