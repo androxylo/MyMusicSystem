@@ -34,7 +34,9 @@ from core.diversity import GENRE_BUCKETS, classify_genre
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_DATA_SETTINGS_PATH = Path(__file__).parent.parent.parent / "data" / "settings.yaml"
+_CONFIG_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_SETTINGS_PATH = _DATA_SETTINGS_PATH if _DATA_SETTINGS_PATH.exists() else _CONFIG_SETTINGS_PATH
 
 # Score threshold: >= this is a "like" for the Beta update
 _LIKE_THRESHOLD = 6
@@ -168,9 +170,14 @@ class BanditExplorerEngine(BaseEngine):
             if bucket not in alpha:
                 continue
             if rt.score >= _LIKE_THRESHOLD:
-                alpha[bucket] += 1
+                weight = 1
+                if rt.score >= 8:
+                    weight = (rt.score - 7) * 2 + 1  # 8 -> 3, 9 -> 5, 10 -> 7
+                alpha[bucket] += weight
             else:
-                beta[bucket] += 1
+                # Disliked - lower score gets more weight on beta
+                weight = max(1, 7 - rt.score)
+                beta[bucket] += weight
 
         return alpha, beta
 

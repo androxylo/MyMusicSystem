@@ -41,10 +41,12 @@ from core.diversity import classify_genre
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_DATA_SETTINGS_PATH = Path(__file__).parent.parent.parent / "data" / "settings.yaml"
+_CONFIG_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_SETTINGS_PATH = _DATA_SETTINGS_PATH if _DATA_SETTINGS_PATH.exists() else _CONFIG_SETTINGS_PATH
 
 # Min liked tracks before the engine becomes available
-_MIN_LIKED_TRACKS = 5
+_MIN_LIKED_TRACKS = 3
 
 # Tracks scored >= this contribute to the preference vector
 _LIKE_THRESHOLD = 7
@@ -246,7 +248,8 @@ class LastFmTagSimilarityEngine(BaseEngine):
         """Weighted sum of per-track tag vectors for all liked tracks."""
         pref: dict[str, float] = {}
         for rt in liked:
-            weight = rt.score / 10.0
+            # heavily weigh 8+ ratings
+            weight = (rt.score - 6) ** 2
             try:
                 tag_pairs = self._lastfm.get_track_tags(rt.track.title, rt.track.artist, limit=15)
             except Exception:

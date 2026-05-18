@@ -37,7 +37,9 @@ from core.base_engine import BaseEngine, EngineHealth, SessionContext, Suggestio
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_DATA_SETTINGS_PATH = Path(__file__).parent.parent.parent / "data" / "settings.yaml"
+_CONFIG_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_SETTINGS_PATH = _DATA_SETTINGS_PATH if _DATA_SETTINGS_PATH.exists() else _CONFIG_SETTINGS_PATH
 
 # Score threshold: >= this counts as "liked" for the preference vector
 _LIKED_THRESHOLD = 7
@@ -200,7 +202,8 @@ class ContentSimilarityEngine(BaseEngine):
         pref = [0.0] * _FEATURE_DIM
         total_weight = 0.0
         for rt in liked:
-            w = rt.score / 10.0
+            # 7 -> 1, 8 -> 4, 9 -> 9, 10 -> 16 to emphasize 8+ ratings
+            w = (rt.score - 6) ** 2
             for i, v in enumerate(rt.track.audio_features["features"][:_FEATURE_DIM]):
                 pref[i] += v * w
             total_weight += w

@@ -22,7 +22,9 @@ from core.diversity import GENRE_BUCKETS, classify_genre
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_DATA_SETTINGS_PATH = Path(__file__).parent.parent.parent / "data" / "settings.yaml"
+_CONFIG_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_SETTINGS_PATH = _DATA_SETTINGS_PATH if _DATA_SETTINGS_PATH.exists() else _CONFIG_SETTINGS_PATH
 
 # Canonical set of genre buckets sourced from diversity.py
 _ALL_GENRES: list[str] = sorted(set(GENRE_BUCKETS.values()))

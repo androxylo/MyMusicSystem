@@ -36,6 +36,8 @@ _WS_RE = re.compile(r"\s+")
 
 def _fingerprint(title: str, artist: str) -> str:
     def norm(s: str) -> str:
+        # Strip common suffixes: (Remastered), - Live, [Edit], etc.
+        s = re.sub(r"[\(\[\-].*?\b(remaster|live|edit|version|radio|mono|stereo|reissue)\b.*?[\)\]]?", "", s, flags=re.IGNORECASE)
         s = _NORM_RE.sub("", s.lower())
         return _WS_RE.sub(" ", s).strip()
     return f"{norm(title)}|{norm(artist)}"

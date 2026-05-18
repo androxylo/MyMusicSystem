@@ -298,16 +298,21 @@ class SessionManager:
     def _build_context(self, config: SessionConfig) -> SessionContext:
         all_rated = self._db.get_all_rated_tracks()
         recent_sessions = self._db.get_recent_sessions(n=10)
-        excluded = self._db.get_all_rated_track_ids()
+        excluded_ids = self._db.get_all_rated_track_ids()
+        
+        # User requested: exclude tracks already rated >= 7 from future suggestions.
+        # We use fingerprints to catch the same song on different albums.
         fingerprints = {
             _track_fingerprint(rt.track.title, rt.track.artist)
             for rt in all_rated
+            if rt.score >= 7
         }
+        
         return SessionContext(
             rated_tracks=all_rated,
             recent_sessions=recent_sessions,
             session_config=config,
-            excluded_track_ids=excluded,
+            excluded_track_ids=excluded_ids,
             excluded_track_fingerprints=fingerprints,
         )
 

@@ -22,7 +22,9 @@ from core.diversity import classify_genre
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_DATA_SETTINGS_PATH = Path(__file__).parent.parent.parent / "data" / "settings.yaml"
+_CONFIG_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_SETTINGS_PATH = _DATA_SETTINGS_PATH if _DATA_SETTINGS_PATH.exists() else _CONFIG_SETTINGS_PATH
 
 _SEED_SCORE_THRESHOLD = 7    # min user score to use an artist as a seed
 _HIGH_SCORE_THRESHOLD = 8    # artists above this score trigger 2-hop traversal
@@ -182,8 +184,9 @@ class LastFmGraphEngine(BaseEngine):
         for item in similar:
             match = item.match_score
             # Penalize artists the user has already rated (but don't exclude them)
+            # apply an exponential weight for 8+ source scores
             novelty = 0.5 if item.name in rated_artists else 1.0
-            composite = (source_score / 10.0) * match * novelty
+            composite = ((source_score - 6) ** 2) * match * novelty
 
             if candidates.get(item.name, 0) < composite:
                 candidates[item.name] = composite

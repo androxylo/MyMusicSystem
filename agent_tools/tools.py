@@ -31,7 +31,9 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_PATH = Path(__file__).parent.parent / "config" / "settings.yaml"
+_DATA_SETTINGS_PATH = Path(__file__).parent.parent / "data" / "settings.yaml"
+_CONFIG_SETTINGS_PATH = Path(__file__).parent.parent / "config" / "settings.yaml"
+_SETTINGS_PATH = _DATA_SETTINGS_PATH if _DATA_SETTINGS_PATH.exists() else _CONFIG_SETTINGS_PATH
 _ENGINES_CONFIG_PATH = Path(__file__).parent.parent / "config" / "engines.yaml"
 _ENGINES_DIR = Path(__file__).parent.parent / "engines"
 _MIGRATIONS_DIR = Path(__file__).parent.parent / "database" / "migrations"

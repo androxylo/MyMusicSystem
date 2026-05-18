@@ -41,7 +41,9 @@ from core.diversity import GENRE_BUCKETS, classify_genre
 
 logger = logging.getLogger(__name__)
 
-_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_DATA_SETTINGS_PATH = Path(__file__).parent.parent.parent / "data" / "settings.yaml"
+_CONFIG_SETTINGS_PATH = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
+_SETTINGS_PATH = _DATA_SETTINGS_PATH if _DATA_SETTINGS_PATH.exists() else _CONFIG_SETTINGS_PATH
 
 # Score threshold: >= this is a positive interaction for WARP
 _LIKED_THRESHOLD = 7
@@ -230,9 +232,9 @@ class CollaborativeFilterEngine(BaseEngine):
             item_features=list(all_tags),
         )
 
-        # Build interactions (only positives, weighted by score)
+        # Build interactions (only positives, heavily weighted for scores >= 8)
         interactions, weights = dataset.build_interactions(
-            [("me", rt.track.id, rt.score / 10.0) for rt in positives]
+            [("me", rt.track.id, (rt.score - 6) ** 2) for rt in positives]
         )
 
         # Build item features sparse matrix

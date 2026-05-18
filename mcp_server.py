@@ -25,6 +25,7 @@ mcp.tool()(t.get_track_info)
 mcp.tool()(t.get_playlists)
 mcp.tool()(t.set_curated_threshold)
 mcp.tool()(t.reconcile_playlists)
+mcp.tool()(t.reset_context)
 
 if __name__ == "__main__":
     mcp.run()
